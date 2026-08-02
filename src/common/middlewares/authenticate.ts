@@ -11,7 +11,7 @@ export default expressjwt({
         rateLimit: true,
     }) as GetVerificationKey,
     algorithms: ["RS256"],
-    getToken(req: Request) {
+    getToken(req: Request): string | undefined {
         const authHeader = req.headers.authorization;
 
         if (authHeader && authHeader.split(" ")[1] !== "undefined") {
