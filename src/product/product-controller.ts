@@ -7,6 +7,8 @@ import { FileStorage } from "../common/types/storage";
 import { v4 as uuidv4 } from "uuid";
 import { UploadedFile } from "express-fileupload";
 import { validationResult } from "express-validator";
+import { Roles } from "../common/constants";
+import { AuthRequest } from "../common/types";
 
 export class ProductController {
     constructor(
@@ -14,18 +16,24 @@ export class ProductController {
         private storage: FileStorage,
     ) {}
 
+    private assertTenantAccess(auth: AuthRequest["auth"], tenantId: string) {
+        if (auth.role === Roles.ADMIN) {
+            return;
+        }
+
+        if (String(tenantId) !== String(auth.tenant)) {
+            throw createHttpError(
+                403,
+                "You are not allowed to access this product",
+            );
+        }
+    }
+
     create = async (req: Request, res: Response, next: NextFunction) => {
         const result = validationResult(req);
         if (!result.isEmpty()) {
             return next(createHttpError(400, result.array()[0].msg as string));
         }
-
-        const uploadedImage = req.files!.image as UploadedFile;
-        const imageName = uuidv4();
-        await this.storage.upload({
-            filename: imageName,
-            fileData: new Uint8Array(uploadedImage.data).buffer,
-        });
 
         const {
             name,
@@ -35,6 +43,19 @@ export class ProductController {
             tenantId,
             categoryId,
         } = req.body as CreateProductBody;
+
+        try {
+            this.assertTenantAccess((req as AuthRequest).auth, tenantId);
+        } catch (error) {
+            return next(error);
+        }
+
+        const uploadedImage = req.files!.image as UploadedFile;
+        const imageName = uuidv4();
+        await this.storage.upload({
+            filename: imageName,
+            fileData: new Uint8Array(uploadedImage.data).buffer,
+        });
 
         const product: Product = {
             name,
@@ -60,25 +81,10 @@ export class ProductController {
         }
 
         const productId = req.params.id;
-        const existingImage =
-            await this.productService.getProductImage(productId);
 
-        if (!existingImage) {
+        const product = await this.productService.getProduct(productId);
+        if (!product) {
             return next(createHttpError(404, "Product not found"));
-        }
-
-        let imageName = existingImage;
-        const uploadedImage = req.files?.image as UploadedFile | undefined;
-
-        if (uploadedImage) {
-            imageName = uuidv4();
-
-            await this.storage.upload({
-                filename: imageName,
-                fileData: new Uint8Array(uploadedImage.data).buffer,
-            });
-
-            await this.storage.delete(existingImage);
         }
 
         const {
@@ -90,7 +96,32 @@ export class ProductController {
             categoryId,
         } = req.body as CreateProductBody;
 
-        const product: Product = {
+        const auth = (req as AuthRequest).auth;
+        try {
+            this.assertTenantAccess(auth, product.tenantId);
+            this.assertTenantAccess(auth, tenantId);
+        } catch (error) {
+            return next(error);
+        }
+
+        let imageName: string | undefined;
+        let oldImage: string | undefined;
+
+        if (req.files?.image) {
+            oldImage = product.image;
+
+            const image = req.files.image as UploadedFile;
+            imageName = uuidv4();
+
+            await this.storage.upload({
+                filename: imageName,
+                fileData: new Uint8Array(image.data).buffer,
+            });
+
+            await this.storage.delete(oldImage);
+        }
+
+        const productToUpdate: Product = {
             name,
             description,
             priceConfiguration: JSON.parse(
@@ -99,18 +130,11 @@ export class ProductController {
             attributes: JSON.parse(attributes) as Product["attributes"],
             tenantId,
             categoryId,
-            image: imageName,
+            image: imageName ?? oldImage!,
         };
 
-        const updatedProduct = await this.productService.updateProduct(
-            product,
-            productId,
-        );
+        await this.productService.updateProduct(productId, productToUpdate);
 
-        if (!updatedProduct) {
-            return next(createHttpError(404, "Product not found"));
-        }
-
-        res.status(200).json({ id: updatedProduct._id });
+        res.status(200).json({ id: productId });
     };
 }

@@ -6,12 +6,11 @@ export class ProductService {
         return await productModel.create(product);
     }
 
-    async getProductImage(productId: string) {
-        const product = await productModel.findById(productId);
-        return product?.image;
+    async getProduct(productId: string) {
+        return await productModel.findById(productId);
     }
 
-    async updateProduct(product: Product, productId: string) {
+    async updateProduct(productId: string, product: Product) {
         return await productModel.findOneAndUpdate(
             { _id: productId },
             { $set: product },
