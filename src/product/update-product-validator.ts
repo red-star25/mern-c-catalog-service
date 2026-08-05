@@ -13,8 +13,4 @@ export default [
     body("attributes").exists().withMessage("Attributes field is required"),
     body("tenantId").exists().withMessage("Tenant ID field is required"),
     body("categoryId").exists().withMessage("Category ID field is required"),
-    body("image").custom((value, { req }) => {
-        if (!req.files) throw new Error("Product image is required");
-        return true;
-    }),
 ];
