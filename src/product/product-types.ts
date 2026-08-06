@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+
 export interface ProductPriceConfiguration {
     priceType: "base" | "additional";
     availableOptions: Record<string, number>;
@@ -26,4 +28,10 @@ export interface CreateProductBody {
     tenantId: string;
     categoryId: string;
     image: string;
+}
+
+export interface Filter {
+    tenantId?: string;
+    categoryId?: mongoose.Types.ObjectId;
+    isPublish?: boolean;
 }
